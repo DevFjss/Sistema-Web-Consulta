@@ -1246,7 +1246,7 @@
           throw new Error('O caminho não é um diretório');
         }
         
-        const files = data.filter(item => item.type === 'file' && /\.xlsx?$/i.test(item.name));
+        const files = data.filter(item => item.type === 'file' && /\.(xlsx|xlsm)$/i.test(item.name));
         
         if (files.length === 0) {
           elGithubStatus.textContent = 'Nenhum arquivo .xlsx ou .xlsm encontrado.';
