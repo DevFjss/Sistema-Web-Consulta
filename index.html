@@ -1,0 +1,1354 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Importar XLSX/XLSM do GitHub e visualizar tabela</title>
+
+  <!-- SheetJS (XLSX/XLSM parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <!-- Font Awesome para ícones -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(255,255,255,.10);
+      --border: rgba(255,255,255,.14);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.70);
+      --accent: #7c3aed;
+      --ok: #22c55e;
+      --warn:#f59e0b;
+      --danger:#ef4444;
+      
+      /* Cores da tabela - padrão preto (original) */
+      --table-bg: rgba(0,0,0,.16);
+      --table-header-bg: rgba(11,18,32,.95);
+      --table-text: rgba(255,255,255,.90);
+      --table-border: rgba(255,255,255,.08);
+      --table-row-hover: rgba(255,255,255,.03);
+    }
+    
+    /* Tema claro - cinza */
+    .theme-light-gray {
+      --table-bg: #f5f5f5;
+      --table-header-bg: #e0e0e0;
+      --table-text: #333333;
+      --table-border: #cccccc;
+      --table-row-hover: #d5d5d5;
+    }
+    
+    /* Tema claro - branco */
+    .theme-white {
+      --table-bg: #ffffff;
+      --table-header-bg: #f0f0f0;
+      --table-text: #222222;
+      --table-border: #dddddd;
+      --table-row-hover: #f5f5f5;
+    }
+    
+    /* Tema claro - azul claro */
+    .theme-light-blue {
+      --table-bg: #e6f3ff;
+      --table-header-bg: #b8d9f0;
+      --table-text: #003366;
+      --table-border: #99c2e0;
+      --table-row-hover: #cce6ff;
+    }
+    
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 600px at 20% 0%, rgba(124,58,237,.35), transparent 55%),
+        radial-gradient(900px 500px at 90% 15%, rgba(34,197,94,.25), transparent 55%),
+        var(--bg);
+      min-height:100vh;
+    }
+    .container{
+      max-width: 100%;
+      margin: 0;
+      padding: 28px 16px 50px 0;
+    }
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:14px;
+      flex-wrap:wrap;
+      margin-bottom: 14px;
+      margin-left: 16px;
+    }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      background: rgba(124,58,237,.18);
+      border: 1px solid rgba(124,58,237,.35);
+      font-weight:700;
+      letter-spacing:.2px;
+      width:max-content;
+    }
+    h1{
+      margin: 10px 0 6px;
+      font-size: 22px;
+      font-weight: 900;
+      line-height:1.2;
+    }
+    .sub{
+      color: var(--muted);
+      max-width: 85ch;
+      font-size: 14px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 380px 1fr; /* Aumentei um pouco para os novos campos */
+      gap: 14px;
+      align-items:start;
+      margin-left: 0;
+    }
+    @media (max-width: 980px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 16px 60px rgba(0,0,0,.45);
+      backdrop-filter: blur(10px);
+      padding: 16px;
+      margin-left: 0;
+    }
+    .card h2{
+      margin: 0 0 10px;
+      font-size: 15.5px;
+      font-weight: 900;
+    }
+
+    .row{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    label{
+      display:block;
+      font-size: 12.5px;
+      color: var(--muted);
+      margin: 10px 0 6px;
+    }
+    
+    select, input[type="file"], input[type="number"], input[type="text"] {
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: #000000;
+      color: #ffffff;
+      outline:none;
+    }
+    
+    #sheetSelect, #renderMode, #githubFileSelect {
+      background: #000000;
+      color: #ffffff;
+    }
+    
+    select option {
+      background: #000000;
+      color: #ffffff;
+    }
+    
+    input[type="number"]{ 
+      appearance: textfield;
+      background: #000000;
+      color: #ffffff;
+    }
+    
+    select:disabled, input:disabled{ opacity:.6; }
+
+    .btns{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top: 12px;
+    }
+    button{
+      border:0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-weight: 850;
+      cursor:pointer;
+    }
+    .btn-primary{
+      background: linear-gradient(135deg, rgba(124,58,237,1), rgba(99,102,241,1));
+      color:white;
+    }
+    .btn-ghost{
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.18);
+      color: var(--text);
+    }
+    button:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .pill{
+      display:inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .status{
+      margin-top: 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.14);
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .status strong{ color: rgba(255,255,255,.92); }
+    .divider{
+      height:1px;
+      background: rgba(255,255,255,.10);
+      margin: 14px 0;
+    }
+
+    /* Seletor de cores da tabela */
+    .theme-selector {
+      margin-top: 16px;
+      padding: 12px;
+      background: rgba(124,58,237,.1);
+      border: 1px solid rgba(124,58,237,.3);
+      border-radius: 12px;
+    }
+    
+    .theme-selector h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .theme-selector h3 i {
+      color: #ffd700;
+      font-size: 16px;
+    }
+    
+    .theme-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .theme-btn {
+      flex: 1;
+      min-width: 70px;
+      padding: 10px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(0,0,0,.3);
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+    
+    .theme-btn i {
+      font-size: 18px;
+    }
+    
+    .theme-btn:hover {
+      transform: translateY(-2px);
+    }
+    
+    .theme-btn.active {
+      border: 2px solid #ffd700;
+      box-shadow: 0 0 10px rgba(255,215,0,0.3);
+    }
+    
+    /* Ícones coloridos */
+    .theme-btn[data-theme="black"] i { color: #ffffff; }
+    .theme-btn[data-theme="gray"] i { color: #9e9e9e; }
+    .theme-btn[data-theme="white"] i { color: #ffffff; }
+    .theme-btn[data-theme="blue"] i { color: #64b5f6; }
+
+    /* Botão de mostrar/ocultar pesquisa */
+    .toggle-search-btn {
+      width: 100%;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      padding: 10px;
+      background: rgba(124,58,237,.15);
+      border: 1px solid rgba(124,58,237,.4);
+      border-radius: 12px;
+      color: #c4b5fd;
+      font-size: 13px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .toggle-search-btn:hover {
+      background: rgba(124,58,237,.25);
+      transform: translateY(-1px);
+    }
+    
+    .toggle-search-btn i {
+      font-size: 16px;
+    }
+
+    /* Área de pesquisa (ocultável) */
+    .search-area {
+      margin-top: 16px;
+      padding: 12px;
+      background: rgba(255,255,255,.04);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      display: none; /* Começa oculto */
+    }
+    
+    .search-area.visible {
+      display: block;
+    }
+    
+    .search-area h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--accent);
+    }
+    .search-input-wrapper {
+      margin-bottom: 10px;
+    }
+    .target-columns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .target-columns .pill {
+      background: rgba(124,58,237,.15);
+      border-color: rgba(124,58,237,.4);
+      color: #c4b5fd;
+    }
+    .filter-stats {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    /* GitHub area */
+    .github-area {
+      margin-top: 16px;
+      padding: 12px;
+      background: rgba(255,255,255,.04);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .github-area h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .github-area .row {
+      margin-bottom: 8px;
+    }
+    .github-status {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    /* Controles de redimensionamento */
+    .column-controls {
+      margin-bottom: 15px;
+      padding: 12px;
+      background: rgba(124,58,237,.1);
+      border: 1px solid rgba(124,58,237,.3);
+      border-radius: 12px;
+    }
+    
+    .column-controls h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    
+    .column-list {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 8px;
+      background: rgba(0,0,0,.2);
+      border-radius: 8px;
+    }
+    
+    .column-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    
+    .column-item:last-child {
+      border-bottom: none;
+    }
+    
+    .column-item span {
+      min-width: 100px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    
+    .column-item input[type="range"] {
+      flex: 1;
+      height: 4px;
+      background: rgba(124,58,237,.3);
+      border-radius: 2px;
+      -webkit-appearance: none;
+    }
+    
+    .column-item input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    
+    .column-item .width-value {
+      min-width: 45px;
+      text-align: right;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    
+    .btn-reset-widths {
+      margin-top: 10px;
+      width: 100%;
+      padding: 8px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* Tabela com redimensionamento - usando variáveis CSS */
+    .tableHeader{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-end;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom: 10px;
+    }
+    .tableHeader .title{
+      font-weight: 900;
+      margin:0;
+      font-size: 15.5px;
+    }
+    .tableHeader .desc{
+      margin-top:4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .tableWrap{
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow:auto;
+      max-height: 70vh;
+      background: var(--table-bg);
+      position: relative;
+      transition: background-color 0.3s ease;
+    }
+    
+    table{
+      border-collapse: collapse;
+      width:100%;
+      min-width: 720px;
+      font-size: 13.5px;
+      color: var(--table-text);
+      table-layout: fixed;
+      transition: color 0.3s ease;
+    }
+    
+    th, td{
+      border-bottom: 1px solid var(--table-border);
+      border-right: 1px solid var(--table-border);
+      padding: 8px 10px;
+      vertical-align: top;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: border-color 0.3s ease;
+    }
+    
+    th{
+      position: sticky;
+      top: 0;
+      background: var(--table-header-bg);
+      z-index: 10;
+      text-align:left;
+      font-weight: 900;
+      position: relative;
+      user-select: none;
+      transition: background-color 0.3s ease;
+    }
+    
+    .resize-handle {
+      position: absolute;
+      top: 0;
+      right: -5px;
+      width: 10px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 20;
+      background: transparent;
+    }
+    
+    .resize-handle:hover,
+    .resize-handle:active {
+      background: rgba(124,58,237,.3);
+    }
+    
+    .resize-handle::after {
+      content: '';
+      position: absolute;
+      top: 25%;
+      left: 4px;
+      width: 2px;
+      height: 50%;
+      background: rgba(255,255,255,.2);
+      border-radius: 1px;
+    }
+    
+    tr:hover td{
+      background: var(--table-row-hover);
+      transition: background-color 0.2s ease;
+    }
+    
+    td.valor-formatado {
+      color: #4ade80;
+      font-weight: 600;
+      text-align: right;
+      font-family: 'Courier New', monospace;
+    }
+    
+    /* Ajuste para cores claras */
+    .theme-light-gray td.valor-formatado,
+    .theme-white td.valor-formatado,
+    .theme-light-blue td.valor-formatado {
+      color: #2e7d32;
+      font-weight: 700;
+    }
+    
+    .emptyState{
+      padding: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .hint{
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 10px;
+      line-height:1.4;
+    }
+    .hint code{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      padding: 2px 6px;
+      border-radius: 8px;
+      color: rgba(255,255,255,.85);
+    }
+    
+    .format-legend {
+      margin-top: 10px;
+      padding: 8px;
+      background: rgba(34,197,94,.1);
+      border: 1px solid rgba(34,197,94,.3);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    
+    .format-legend span {
+      color: #4ade80;
+      font-weight: 600;
+    }
+
+    .sheet-count {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 8px;
+      background: rgba(124,58,237,.2);
+      border-radius: 12px;
+      font-size: 11px;
+      color: var(--accent);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <div class="badge">Importar planilha → Visualizar na Web</div>
+        <h1>Carregar .XLSX ou .XLSM do GitHub e visualizar tabela</h1>
+        <div class="sub">
+          Selecione um arquivo local ou configure um repositório GitHub público para importar.
+        </div>
+      </div>
+
+      <div class="pill">Front-end (HTML/CSS/JS) + SheetJS</div>
+    </div>
+
+    <div class="grid">
+      <!-- Controles -->
+      <section class="card">
+        <h2>1) Arquivo local</h2>
+
+        <label for="fileInput">Selecione um arquivo .xlsx/.xlsm</label>
+        <input id="fileInput" type="file" accept=".xlsx,.xlsm" />
+
+        <div class="status" id="statusBox">
+          <div>Status: <strong id="statusText">Aguardando arquivo…</strong></div>
+          <div class="pill" id="statusPill">—</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h2>2) Arquivo do GitHub</h2>
+
+        <div class="github-area">
+          <h3><i class="fab fa-github"></i> Configurar repositório</h3>
+          <div class="row">
+            <div>
+              <label>Owner</label>
+              <input type="text" id="githubOwner" placeholder="ex: usuario" value="sheetjs" />
+            </div>
+            <div>
+              <label>Repositório</label>
+              <input type="text" id="githubRepo" placeholder="ex: repo" value="test_files" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Pasta (opcional)</label>
+              <input type="text" id="githubPath" placeholder="ex: planilhas" value="" />
+            </div>
+            <div>
+              <label>Branch</label>
+              <input type="text" id="githubBranch" placeholder="main" value="main" />
+            </div>
+          </div>
+          <div class="btns" style="margin-top: 8px;">
+            <button class="btn-ghost" id="btnListGitHub"><i class="fas fa-sync-alt"></i> Listar arquivos</button>
+          </div>
+          <label for="githubFileSelect" style="margin-top: 12px;">Arquivos .xlsx/.xlsm encontrados:</label>
+          <select id="githubFileSelect" disabled>
+            <option value="">Nenhum arquivo listado</option>
+          </select>
+          <div class="github-status" id="githubStatus"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3>3) Escolher aba e visualizar</h3>
+
+        <label for="sheetSelect">
+          Abas disponíveis
+          <span id="sheetCount" class="sheet-count">0</span>
+        </label>
+        <select id="sheetSelect" disabled></select>
+
+        <div class="row">
+          <div>
+            <label for="maxRows">Máx. linhas (prévia)</label>
+            <input id="maxRows" type="number" min="10" step="10" value="200000" disabled />
+          </div>
+          <div>
+            <label for="maxCols">Máx. colunas (prévia)</label>
+            <input id="maxCols" type="number" min="5" step="5" value="50" disabled />
+          </div>
+        </div>
+
+        <label for="renderMode">Modo de renderização</label>
+        <select id="renderMode" disabled>
+          <option value="fast" selected>Rápido (valores)</option>
+          <option value="styled">Com formatação (HTML do SheetJS)</option>
+        </select>
+
+        <!-- Botão para mostrar/ocultar pesquisa -->
+        <button class="toggle-search-btn" id="toggleSearchBtn">
+          <i class="fas fa-search"></i>
+          <span>Mostrar pesquisa</span>
+          <i class="fas fa-chevron-down"></i>
+        </button>
+
+        <!-- ÁREA DE PESQUISA (inicialmente oculta) -->
+        <div class="search-area" id="searchArea">
+          <h3>🔍 Filtrar por colunas</h3>
+          <div class="search-input-wrapper">
+            <input type="text" id="searchInput" placeholder="Digite para filtrar..." disabled />
+          </div>
+          <div class="target-columns">
+            <span class="pill">NTE</span>
+            <span class="pill">MUNICIPIO</span>
+            <span class="pill">COD_SEC</span>
+            <span class="pill">CENTRO DE CUSTO</span>
+            <span class="pill">COD_INEP</span>
+            <span class="pill">NOME DA UNIDADE ESCOLAR</span>
+          </div>
+          <div class="filter-stats" id="filterStats"></div>
+        </div>
+
+        <!-- Seletor de cores da tabela (opcional) -->
+        <div class="theme-selector">
+          <h3>
+            <i class="fas fa-palette"></i>
+            Cor de fundo da tabela (opcional)
+          </h3>
+          <div class="theme-buttons">
+            <button class="theme-btn active" data-theme="black" id="themeBlack">
+              <i class="fas fa-paint-brush"></i>
+              <span>Preto</span>
+            </button>
+            <button class="theme-btn" data-theme="gray" id="themeGray">
+              <i class="fas fa-paint-brush"></i>
+              <span>Cinza</span>
+            </button>
+            <button class="theme-btn" data-theme="white" id="themeWhite">
+              <i class="fas fa-paint-brush"></i>
+              <span>Branco</span>
+            </button>
+            <button class="theme-btn" data-theme="blue" id="themeBlue">
+              <i class="fas fa-paint-brush"></i>
+              <span>Azul</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Controles de redimensionamento de colunas -->
+        <div class="column-controls" id="columnControls" style="display: none;">
+          <h3>📏 Redimensionar colunas</h3>
+          <div class="column-list" id="columnList"></div>
+          <button class="btn-reset-widths" id="btnResetWidths">Resetar larguras</button>
+        </div>
+
+        <div class="btns">
+          <button class="btn-primary" id="btnRender" disabled>Renderizar aba selecionada</button>
+          <button class="btn-ghost" id="btnClear" disabled>Limpar</button>
+        </div>
+
+        <div class="hint">
+          <strong>✨ Formatação automática:</strong> Colunas financeiras serão formatadas no padrão brasileiro.
+          <div class="format-legend">
+            Palavras-chave detectadas: <span>VALOR, REPASSE, LIMITE, ATUAL, IMPLANTADO, DISPONIVEL, ORIGINAL, PRINCIPAL, TOTAL, SALDO, PAGO, RECEBIDO, CUSTO, PRECO</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tabela -->
+      <section class="card">
+        <div class="tableHeader">
+          <div>
+            <div class="title">Visualização da planilha</div>
+            <div class="desc" id="tableDesc">Nenhum arquivo carregado.</div>
+          </div>
+          <div class="pill" id="metaPill">—</div>
+        </div>
+
+        <!-- O elemento tableWrap receberá as classes de tema -->
+        <div class="tableWrap" id="tableWrap">
+          <div class="emptyState">
+            Selecione um arquivo local ou do GitHub, escolha uma aba e clique em "Renderizar".
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // Estado do workbook em memória
+    let workbook = null;
+    let currentFileName = null;
+    let columnWidths = {};
+    let currentColumns = [];
+    let financialColumns = new Set();
+    let isResizing = false;
+    let currentResizeColumn = null;
+    let startX = 0;
+    let startWidth = 0;
+
+    // Dados para filtro
+    let originalRows = [];
+    let filteredRows = [];
+    let searchTerm = '';
+    let targetColumnIndices = new Set();
+
+    const elFileInput  = document.getElementById('fileInput');
+    const elSheetSelect = document.getElementById('sheetSelect');
+    const elSheetCount = document.getElementById('sheetCount');
+    const elMaxRows = document.getElementById('maxRows');
+    const elMaxCols = document.getElementById('maxCols');
+    const elRenderMode = document.getElementById('renderMode');
+    const elBtnRender = document.getElementById('btnRender');
+    const elBtnClear = document.getElementById('btnClear');
+    const elColumnControls = document.getElementById('columnControls');
+    const elColumnList = document.getElementById('columnList');
+    const elBtnResetWidths = document.getElementById('btnResetWidths');
+    const elSearchInput = document.getElementById('searchInput');
+    const elFilterStats = document.getElementById('filterStats');
+    const elSearchArea = document.getElementById('searchArea');
+    const elToggleSearchBtn = document.getElementById('toggleSearchBtn');
+    
+    // Elementos do GitHub
+    const elGithubOwner = document.getElementById('githubOwner');
+    const elGithubRepo = document.getElementById('githubRepo');
+    const elGithubPath = document.getElementById('githubPath');
+    const elGithubBranch = document.getElementById('githubBranch');
+    const elBtnListGitHub = document.getElementById('btnListGitHub');
+    const elGithubFileSelect = document.getElementById('githubFileSelect');
+    const elGithubStatus = document.getElementById('githubStatus');
+    
+    // Elementos do seletor de temas
+    const elThemeBlack = document.getElementById('themeBlack');
+    const elThemeGray = document.getElementById('themeGray');
+    const elThemeWhite = document.getElementById('themeWhite');
+    const elThemeBlue = document.getElementById('themeBlue');
+    const elTableWrap = document.getElementById('tableWrap');
+
+    const elStatusText = document.getElementById('statusText');
+    const elStatusPill = document.getElementById('statusPill');
+    const elTableDesc  = document.getElementById('tableDesc');
+    const elMetaPill   = document.getElementById('metaPill');
+
+    // Palavras-chave para identificar colunas financeiras
+    const FINANCE_KEYWORDS = [
+      'valor', 'repasse', 'limite', 'atual', 'implantado', 
+      'disponivel', 'disponível', 'original', 'principal', 
+      'total', 'saldo', 'pago', 'recebido', 'custo', 'preco',
+      'preço', 'bruto', 'liquido', 'liquído', 'mensal', 'parcela'
+    ];
+
+    // Nomes EXATOS das colunas alvo da pesquisa
+    const TARGET_COLUMN_NAMES = [
+      'NTE',
+      'MUNICIPIO',
+      'COD_SEC',
+      'CENTRO DE CUSTO',
+      'INEP',
+      'NOME DA UNIDADE ESCOLAR'
+    ];
+
+    const TARGET_COLUMNS_LOWER = TARGET_COLUMN_NAMES.map(name => 
+      name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    );
+
+    // Função para alternar visibilidade da pesquisa
+    function toggleSearch() {
+      const isVisible = elSearchArea.classList.contains('visible');
+      const btnSpan = elToggleSearchBtn.querySelector('span');
+      const btnIcon = elToggleSearchBtn.querySelector('i:last-child');
+      
+      if (isVisible) {
+        elSearchArea.classList.remove('visible');
+        btnSpan.textContent = 'Mostrar pesquisa';
+        btnIcon.className = 'fas fa-chevron-down';
+      } else {
+        elSearchArea.classList.add('visible');
+        btnSpan.textContent = 'Ocultar pesquisa';
+        btnIcon.className = 'fas fa-chevron-up';
+      }
+    }
+
+    // Função para mudar o tema da tabela
+    function setTableTheme(theme) {
+      elTableWrap.classList.remove('theme-light-gray', 'theme-white', 'theme-light-blue');
+      document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+      
+      switch(theme) {
+        case 'black': elThemeBlack.classList.add('active'); break;
+        case 'gray': elTableWrap.classList.add('theme-light-gray'); elThemeGray.classList.add('active'); break;
+        case 'white': elTableWrap.classList.add('theme-white'); elThemeWhite.classList.add('active'); break;
+        case 'blue': elTableWrap.classList.add('theme-light-blue'); elThemeBlue.classList.add('active'); break;
+      }
+    }
+
+    function setStatus(text, pill){
+      elStatusText.textContent = text;
+      elStatusPill.textContent = pill ?? '—';
+    }
+
+    function enableControls(enabled){
+      elSheetSelect.disabled = !enabled;
+      elMaxRows.disabled = !enabled;
+      elMaxCols.disabled = !enabled;
+      elRenderMode.disabled = !enabled;
+      elBtnRender.disabled = !enabled;
+      elBtnClear.disabled = !enabled;
+      elSearchInput.disabled = !enabled;
+    }
+
+    function clearAll(){
+      workbook = null;
+      currentFileName = null;
+      elFileInput.value = '';
+      elSheetSelect.innerHTML = '';
+      elSheetCount.textContent = '0';
+      enableControls(false);
+      elColumnControls.style.display = 'none';
+      financialColumns.clear();
+      targetColumnIndices.clear();
+      originalRows = [];
+      filteredRows = [];
+      searchTerm = '';
+      elSearchInput.value = '';
+      elFilterStats.textContent = '';
+
+      elTableWrap.innerHTML = '<div class="emptyState">Selecione um arquivo local ou do GitHub, escolha uma aba e clique em "Renderizar".</div>';
+      elTableDesc.textContent = 'Nenhum arquivo carregado.';
+      elMetaPill.textContent = '—';
+      setStatus('Aguardando arquivo…', '—');
+    }
+
+    function escapeHtml(s){
+      return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;");
+    }
+
+    function formatBrazilianNumber(value) {
+      if (value === null || value === undefined || value === '') return '';
+      if (typeof value === 'number') {
+        return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      let str = String(value).trim();
+      let numStr = str.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+      let num = parseFloat(numStr);
+      if (isNaN(num)) return str;
+      return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function isFinancialColumn(columnName) {
+      if (!columnName) return false;
+      const lowerName = columnName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return FINANCE_KEYWORDS.some(keyword => lowerName.includes(keyword));
+    }
+
+    function isTargetColumn(columnName) {
+      if (!columnName) return false;
+      const normalizedName = columnName.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return TARGET_COLUMNS_LOWER.includes(normalizedName);
+    }
+
+    function findHeaderRow(aoa) {
+      for (let i = 0; i < Math.min(20, aoa.length); i++) {
+        const row = aoa[i] || [];
+        for (let j = 0; j < row.length; j++) {
+          const cell = String(row[j] || '').toLowerCase().trim();
+          if (cell === 'nte') return i;
+        }
+      }
+      return 0;
+    }
+
+    function populateSheets(){
+      elSheetSelect.innerHTML = '';
+      for(const name of workbook.SheetNames){
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        elSheetSelect.appendChild(opt);
+      }
+      elSheetCount.textContent = workbook.SheetNames.length;
+    }
+
+    function updateColumnControls() {
+      elColumnList.innerHTML = '';
+      currentColumns.forEach((col, index) => {
+        const div = document.createElement('div');
+        div.className = 'column-item';
+        const span = document.createElement('span');
+        span.textContent = col;
+        if (financialColumns.has(index)) {
+          span.style.color = '#4ade80';
+          span.style.fontWeight = 'bold';
+        }
+        if (targetColumnIndices.has(index)) {
+          span.style.backgroundColor = 'rgba(124,58,237,.3)';
+          span.style.padding = '2px 6px';
+          span.style.borderRadius = '4px';
+          span.style.color = '#ffffff';
+          span.style.fontWeight = 'bold';
+        }
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = '50';
+        input.max = '500';
+        input.value = columnWidths[col] || 250;
+        input.step = '10';
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'width-value';
+        valueSpan.textContent = input.value + 'px';
+        input.addEventListener('input', (e) => {
+          columnWidths[col] = e.target.value;
+          valueSpan.textContent = e.target.value + 'px';
+          applyColumnWidths();
+        });
+        div.appendChild(span);
+        div.appendChild(input);
+        div.appendChild(valueSpan);
+        elColumnList.appendChild(div);
+      });
+      elColumnControls.style.display = currentColumns.length ? 'block' : 'none';
+    }
+
+    function applyColumnWidths() {
+      const table = document.querySelector('table');
+      if (!table) return;
+      const headers = table.querySelectorAll('th');
+      headers.forEach((th, index) => {
+        const colName = currentColumns[index];
+        if (colName && columnWidths[colName]) {
+          th.style.width = columnWidths[colName] + 'px';
+        }
+      });
+    }
+
+    function initResizeHandles() {
+      const headers = document.querySelectorAll('th');
+      headers.forEach((th, index) => {
+        if (th.querySelector('.resize-handle')) return;
+        const handle = document.createElement('div');
+        handle.className = 'resize-handle';
+        handle.addEventListener('mousedown', (e) => {
+          isResizing = true;
+          currentResizeColumn = index;
+          startX = e.pageX;
+          startWidth = th.offsetWidth;
+          e.preventDefault();
+        });
+        th.appendChild(handle);
+        th.style.position = 'relative';
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!isResizing || currentResizeColumn === null) return;
+        const diff = e.pageX - startX;
+        const newWidth = Math.max(50, startWidth + diff);
+        const colName = currentColumns[currentResizeColumn];
+        if (colName) {
+          columnWidths[colName] = newWidth;
+          applyColumnWidths();
+          const slider = document.querySelectorAll('.column-item input')[currentResizeColumn];
+          if (slider) {
+            slider.value = newWidth;
+            slider.nextElementSibling.textContent = newWidth + 'px';
+          }
+        }
+      });
+      document.addEventListener('mouseup', () => {
+        isResizing = false;
+        currentResizeColumn = null;
+      });
+    }
+
+    function applyFilter() {
+      if (!originalRows.length) return;
+      const term = searchTerm.trim().toLowerCase();
+      if (term === '') {
+        filteredRows = [...originalRows];
+      } else {
+        filteredRows = originalRows.filter(row => {
+          for (let idx of targetColumnIndices) {
+            if (idx < row.length) {
+              const cellValue = String(row[idx] || '').toLowerCase();
+              if (cellValue.includes(term)) return true;
+            }
+          }
+          return false;
+        });
+      }
+      renderTableWithFilteredData();
+      elFilterStats.textContent = `${filteredRows.length} linha(s) encontrada(s)`;
+    }
+
+    function renderTableWithFilteredData() {
+      if (!currentColumns.length) return;
+      const cLimit = currentColumns.length;
+      let html = '<table><thead><tr>';
+      for(let c=0; c<cLimit; c++){
+        const colName = currentColumns[c];
+        const isTarget = targetColumnIndices.has(c);
+        const targetClass = isTarget ? ' style="background-color: rgba(124,58,237,.3);"' : '';
+        html += `<th data-col-index="${c}"${targetClass}>${escapeHtml(colName)}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+      const maxRows = Math.max(10, Number(elMaxRows.value || 200000));
+      const rowsToShow = filteredRows.slice(0, maxRows);
+      for(let r=0; r<rowsToShow.length; r++){
+        html += '<tr>';
+        const row = rowsToShow[r];
+        for(let c=0; c<cLimit; c++){
+          let v = row[c] ?? "";
+          const isFinancial = financialColumns.has(c);
+          const className = isFinancial ? 'class="valor-formatado"' : '';
+          if (isFinancial && v !== '') v = formatBrazilianNumber(v);
+          html += `<td ${className}>${escapeHtml(v)}</td>`;
+        }
+        html += '</tr>';
+      }
+      if (rowsToShow.length === 0) {
+        html += '<tr><td colspan="' + cLimit + '" style="text-align:center; padding:20px;">Nenhum resultado encontrado</td></tr>';
+      }
+      html += '</tbody></table>';
+      elTableWrap.innerHTML = html;
+      applyColumnWidths();
+      initResizeHandles();
+      const totalOriginal = originalRows.length;
+      const totalExibidas = rowsToShow.length;
+      const totalFiltradas = filteredRows.length;
+      let desc = `Arquivo: ${currentFileName} · Aba: ${elSheetSelect.value} · Exibindo ${totalExibidas} de ${totalFiltradas} linha(s) (filtradas de ${totalOriginal}) · ${cLimit} colunas. `;
+      if (searchTerm.trim() !== '') desc += `Filtro: "${searchTerm}"`;
+      elTableDesc.textContent = desc;
+      elMetaPill.textContent = `${totalOriginal} linhas · ${cLimit} colunas`;
+    }
+
+    function loadSheetData(sheetName) {
+      const ws = workbook.Sheets[sheetName];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: "" });
+      const maxCols = Math.max(5, Number(elMaxCols.value || 50));
+      const headerRowIndex = findHeaderRow(aoa);
+      const headerRow = aoa[headerRowIndex] || [];
+      currentColumns = [];
+      financialColumns.clear();
+      targetColumnIndices.clear();
+      for(let c=0; c<Math.min(headerRow.length, maxCols); c++) {
+        const colName = headerRow[c] || XLSX.utils.encode_col(c);
+        currentColumns.push(String(colName));
+        if (isFinancialColumn(colName)) financialColumns.add(c);
+        if (isTargetColumn(colName)) targetColumnIndices.add(c);
+      }
+      originalRows = [];
+      for (let r = headerRowIndex + 1; r < aoa.length; r++) {
+        const row = aoa[r] || [];
+        originalRows.push(row.slice(0, maxCols));
+      }
+      searchTerm = '';
+      elSearchInput.value = '';
+      applyFilter();
+    }
+
+    function renderFast(sheetName){
+      loadSheetData(sheetName);
+      currentColumns.forEach(col => { columnWidths[col] = 250; });
+      setTimeout(() => applyColumnWidths(), 50);
+    }
+
+    function renderStyled(sheetName){
+      const ws = workbook.Sheets[sheetName];
+      const html = XLSX.utils.sheet_to_html(ws, { id: "sheetjsTable", editable: false });
+      elTableWrap.innerHTML = `<div style="min-width:720px">${html}</div>`;
+      const t = elTableWrap.querySelector('table');
+      if (t){
+        t.style.borderCollapse = 'collapse';
+        t.style.width = '100%';
+        t.style.fontSize = '13.5px';
+        t.style.color = 'rgba(255,255,255,.9)';
+        t.style.tableLayout = 'fixed';
+      }
+      const range = XLSX.utils.decode_range(ws['!ref'] || "A1:A1");
+      const rowCount = range.e.r - range.s.r + 1;
+      const colCount = range.e.c - range.s.c + 1;
+      elTableDesc.textContent = `Arquivo: ${currentFileName} · Aba: ${sheetName} · Render com formatação.`;
+      elMetaPill.textContent = `${rowCount} linhas · ${colCount} colunas`;
+      elSearchInput.disabled = true;
+    }
+
+    function render(){
+      if(!workbook) return;
+      const sheetName = elSheetSelect.value;
+      const mode = elRenderMode.value;
+      setStatus('Renderizando…', mode === 'fast' ? 'Rápido' : 'Formatado');
+      if (mode === 'styled') {
+        elSearchInput.disabled = true;
+        elFilterStats.textContent = '';
+      } else {
+        elSearchInput.disabled = false;
+      }
+      setTimeout(() => {
+        try{
+          if (mode === 'fast') renderFast(sheetName);
+          else renderStyled(sheetName);
+          setStatus('Pronto', 'OK');
+        }catch(err){
+          console.error(err);
+          setStatus('Falha ao renderizar', 'ERRO');
+          elTableWrap.innerHTML = '<div class="emptyState">Erro ao renderizar. Tente outro modo ou aba.</div>';
+        }
+      }, 10);
+    }
+
+    // ========== Funções GitHub ==========
+    async function listGitHubFiles() {
+      const owner = elGithubOwner.value.trim();
+      const repo = elGithubRepo.value.trim();
+      const path = elGithubPath.value.trim();
+      const branch = elGithubBranch.value.trim() || 'main';
+      
+      if (!owner || !repo) {
+        elGithubStatus.textContent = 'Preencha owner e repositório.';
+        return;
+      }
+      
+      elGithubStatus.textContent = 'Listando arquivos...';
+      elGithubFileSelect.disabled = true;
+      elGithubFileSelect.innerHTML = '<option value="">Carregando...</option>';
+      
+      try {
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error(`Erro ${response.status}: ${response.statusText}`);
+        const data = await response.json();
+        
+        if (!Array.isArray(data)) {
+          throw new Error('O caminho não é um diretório');
+        }
+        
+        const files = data.filter(item => item.type === 'file' && /\.xlsx?$/i.test(item.name));
+        
+        if (files.length === 0) {
+          elGithubStatus.textContent = 'Nenhum arquivo .xlsx ou .xlsm encontrado.';
+          elGithubFileSelect.innerHTML = '<option value="">Nenhum arquivo</option>';
+          elGithubFileSelect.disabled = true;
+          return;
+        }
+        
+        elGithubFileSelect.innerHTML = '<option value="">Selecione um arquivo...</option>' + 
+          files.map(f => `<option value="${f.download_url}">${f.name}</option>`).join('');
+        elGithubFileSelect.disabled = false;
+        elGithubStatus.textContent = `${files.length} arquivo(s) encontrado(s).`;
+      } catch (error) {
+        console.error(error);
+        elGithubStatus.textContent = 'Erro ao listar: ' + error.message;
+        elGithubFileSelect.innerHTML = '<option value="">Erro ao listar</option>';
+        elGithubFileSelect.disabled = true;
+      }
+    }
+
+    async function loadGitHubFile() {
+      const url = elGithubFileSelect.value;
+      if (!url) return;
+      
+      const fileName = elGithubFileSelect.selectedOptions[0]?.text || 'arquivo_github.xlsx';
+      setStatus('Baixando arquivo do GitHub...', 'Carregando');
+      enableControls(false);
+      
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Falha no download');
+        const arrayBuffer = await response.arrayBuffer();
+        
+        workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        currentFileName = fileName;
+        
+        populateSheets();
+        enableControls(true);
+        setStatus('Arquivo carregado. Escolha uma aba e clique em Renderizar.', 'OK');
+        
+        elTableWrap.innerHTML = '<div class="emptyState">Arquivo carregado do GitHub. Escolha uma aba e clique em "Renderizar".</div>';
+        elTableDesc.textContent = `Arquivo: ${fileName} · Aguardando aba...`;
+        elMetaPill.textContent = '—';
+        elSearchInput.value = '';
+        elFilterStats.textContent = '';
+      } catch (error) {
+        console.error(error);
+        workbook = null;
+        enableControls(false);
+        setStatus('Falha ao ler arquivo do GitHub', 'ERRO');
+        elTableWrap.innerHTML = '<div class="emptyState">Erro ao carregar arquivo do GitHub.</div>';
+      }
+    }
+
+    // Eventos
+    elToggleSearchBtn.addEventListener('click', toggleSearch);
+    elThemeBlack.addEventListener('click', () => setTableTheme('black'));
+    elThemeGray.addEventListener('click', () => setTableTheme('gray'));
+    elThemeWhite.addEventListener('click', () => setTableTheme('white'));
+    elThemeBlue.addEventListener('click', () => setTableTheme('blue'));
+    elSearchInput.addEventListener('input', (e) => { searchTerm = e.target.value; applyFilter(); });
+    
+    elBtnListGitHub.addEventListener('click', listGitHubFiles);
+    elGithubFileSelect.addEventListener('change', loadGitHubFile);
+    
+    elFileInput.addEventListener('change', async () => {
+      const file = elFileInput.files?.[0];
+      if(!file) return;
+      setStatus('Lendo arquivo local...', 'Carregando');
+      enableControls(false);
+      try{
+        const buf = await file.arrayBuffer();
+        workbook = XLSX.read(buf, { type: 'array' });
+        currentFileName = file.name;
+        populateSheets();
+        enableControls(true);
+        setStatus('Arquivo carregado. Escolha uma aba e clique em Renderizar.', 'OK');
+        elTableWrap.innerHTML = '<div class="emptyState">Arquivo local carregado. Escolha uma aba e clique em "Renderizar".</div>';
+        elTableDesc.textContent = `Arquivo: ${file.name} · Aguardando aba...`;
+        elMetaPill.textContent = '—';
+        elSearchInput.value = '';
+        elFilterStats.textContent = '';
+      }catch(err){
+        console.error(err);
+        workbook = null;
+        enableControls(false);
+        setStatus('Falha ao ler arquivo local', 'ERRO');
+        elTableWrap.innerHTML = '<div class="emptyState">Erro ao ler arquivo local.</div>';
+      }
+    });
+
+    elBtnRender.addEventListener('click', render);
+    elBtnClear.addEventListener('click', clearAll);
+    elBtnResetWidths.addEventListener('click', () => {
+      currentColumns.forEach(col => columnWidths[col] = 250);
+      applyColumnWidths();
+      updateColumnControls();
+    });
+
+    // Inicial
+    clearAll();
+    setTableTheme('black');
+  </script>
+</body>
+</html>
